@@ -1,0 +1,40 @@
+{
+  "name": "BuildTowers",
+  "version": "0.0.1",
+  "description": "A towerlike roguelike",
+  "keywords": [
+    "roguelike",
+    "turn-based",
+    "strategy",
+    "TD",
+    "game"
+  ],
+  "homepage": "https://github.com/horaguchi/BuildTowers",
+  "bugs": {
+    "url": "https://github.com/horaguchi/BuildTowers/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "Koji Horaguchi <koji.horaguchi@gmail.com> (http://horaguchi.github.io/)",
+  "main": "./hordelike.js",
+  "bin": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/horaguchi/BuildTowers.git"
+  },
+  "scripts": {
+    "start": "browserify buildtowers-html5.js -s BuildTowers -o www/js/buildtowers-html5.browserify.js && cordova run browser"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "blessed": "0.1.81",
+    "pathfinding": "0.4.18"
+  },
+  "devDependencies": {
+    "browserify": "14.1.0",
+    "cordova": "6.5.0"
+  }
+}
+

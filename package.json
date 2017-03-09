@@ -15,7 +15,7 @@
   },
   "license": "Apache-2.0",
   "author": "Koji Horaguchi <koji.horaguchi@gmail.com> (http://horaguchi.github.io/)",
-  "main": "./hordelike.js",
+  "main": "./buildtowers.js",
   "bin": {
   },
   "repository": {

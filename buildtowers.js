@@ -50,7 +50,8 @@ var BuildTowers = function () {
 module.exports = BuildTowers;
 
 var BuildTowers_EMPTY_LINE_STR = '                                                                                                ';
-var BuildTowers_MANUAL_LINE_STR = 'WASD - move, F - fire, R - reload, E - equip an item';
+var BuildTowers_MANUAL_LINE_STR = 'WASD - move, A - build tower, X - remove tower, SPACE - next turn';
+var PF = require('pathfinding');
 
 BuildTowers.prototype.getScreen = function () {
   var status = this.status;
@@ -63,36 +64,17 @@ BuildTowers.prototype.getScreen = function () {
   status_str += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(status_str.length - 96);
   var items = this.items;
   var range_num = status.rangeMin + Math.min(status.rangeMax, Math.floor(Math.max(0, (time - status.moveCD)) / status.rangeSpeed));
-  var enemies = this.enemies;
+  var enemiesMap = {};
+  this.enemies.forEach(function (enemy) {
+    enemiesMap[enemy.x + '-' + enemy.y] = enemy.type;
+  });
   return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
     return row.map(function (tile, x) {
       if (tile !== ' ') {
         return tile;
-      } else if (items[y][x]) {
-        return items[y][x].symbol;
+      } else if (enemiesMap[x + '-' + y]) {
+        return enemiesMap[x + '-' + y];
       }
-      var is_range = false;
-      if (status.rangeType === 'A' && Math.abs(x - px) + Math.abs(y - py) < range_num) {
-        is_range = true;
-      } else if (status.rangeType === 'B' && (x - px) * (x - px) + (y - py) * (y - py) < range_num * range_num) {
-        is_range = true;
-      } else if (status.rangeType === 'C' && (Math.abs(x - px) || 0.5) * (Math.abs(y - py) || 0.5)  < range_num) {
-        is_range = true;
-      }
-      var is_enemy_range = enemies.some(function (enemy) {
-        var status = enemy.status;
-        var ex = enemy.x, ey = enemy.y;
-        var enemy_range_num = status.rangeMin + Math.min(status.rangeMax, Math.floor(Math.max(0, (time - status.moveCD)) / status.rangeSpeed));
-        if (status.rangeType === 'A' && Math.abs(x - ex) + Math.abs(y - ey) < enemy_range_num) {
-          return true;
-        } else if (status.rangeType === 'B' && (x - ex) * (x - ex) + (y - ey) * (y - ey) < enemy_range_num * enemy_range_num) {
-          return true;
-        } else if (status.rangeType === 'C' && (Math.abs(x - ex) || 0.5) * (Math.abs(y - ey) || 0.5)  < enemy_range_num) {
-          return true;
-        }
-        return false;
-      });
-      return is_range && is_enemy_range ? ';' : (is_enemy_range ? "," : (is_range ? '.' : tile) );
     });
   }));
 };
@@ -112,14 +94,48 @@ BuildTowers.prototype.key = function (key_str) {
     return this.move(1, 0);
   } else if (key_str === 'f') {
     return this.fire();
-  } else if (key_str === 'r') {
-    return this.reload();
-  } else if (key_str === 'e') {
-    return this.equip();
   }
 
   return true;
 };
+
+BuildTowers.prototype.calculatePath = function () {
+  var matrix = this.mapSymbol.map(function (row) {
+    return row.map(function (value) {
+      return /^[^1-9.>]$/.test(value);
+    });
+  });
+  var grid = new PF.Grid(54, 27, matrix);
+  var finder = this.finder;
+  var points = this.points;
+  var all_path = [];
+  for (var i = 1; i < points.length; ++i) {
+    if (i === points.length - 1) { // final @ is walkable
+      grid.setWalkableAt(points[i][0], points[i][1], true);
+    }
+    var path = finder.findPath(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1], grid.clone());
+    if (path.length === 0) {
+      return false; // path is blocking
+    }
+    path.pop();
+    all_path = all_path.concat(path);
+  }
+  var map_symbol = this.mapSymbol;
+  var map_color = this.mapColor;
+  for (var i = 0; i < this.path.length; ++i) {
+    var before_path = this.path[i];
+    if (map_symbol[before_path[1]][before_path[0]] === '.') {
+      map_color[before_path[1]][before_path[0]] = 'gray';
+    }
+  }
+  for (var i = 0; i < all_path.length; ++i) {
+    var next_path = all_path[i];
+    map_color[next_path[1]][next_path[0]] = 'yellow';
+  }
+  this.path = all_path;
+  return true;
+};
+
 
 BuildTowers.prototype.move = function (move_x, move_y) {
   var new_x = this.x + move_x, new_y = this.y + move_y;
@@ -221,8 +237,8 @@ BuildTowers.prototype.enemyMove = function (enemy) {
   } else {
     new_y = enemy.y;
   }
-  this.screen[enemy.y][enemy.x] = ' ';
-  this.screen[new_y][new_x] = enemy.type;
+  //this.screen[enemy.y][enemy.x] = ' ';
+  //this.screen[new_y][new_x] = enemy.type;
   enemy.x = new_x; enemy.y = new_y;
   enemy.status.moveCD = this.time + enemy.status.moveSpeed;
   return true;
@@ -288,33 +304,6 @@ BuildTowers.prototype.fire = function () {
   return true;
 };
 
-BuildTowers.prototype.enemyFire = function (enemy) {
-  if (this.time <= enemy.status.fireCD) {
-    return false;
-  }
-  var x = enemy.x, y = enemy.y;
-  var px = this.x, py = this.y;
-  var status = enemy.status;
-  var range_num = status.rangeMin + Math.min(status.rangeMax, Math.floor(Math.max(0, (this.time - status.moveCD)) / status.rangeSpeed));
-  var is_range = false;
-  if (status.rangeType === 'A' && Math.abs(x - px) + Math.abs(y - py) < range_num) {
-    is_range = true;
-  } else if (status.rangeType === 'B' && (x - px) * (x - px) + (y - py) * (y - py) < range_num * range_num) {
-    is_range = true;
-  } else if (status.rangeType === 'C' && (Math.abs(x - px) || 0.5) * (Math.abs(y - py) || 0.5)  < range_num) {
-    is_range = true;
-  }
-  if (!is_range) {
-    return false;
-  }
-  this.status.health -= status.power;
-  enemy.status.fireCD = this.time + enemy.status.fireSpeed;
-  if (this.status.health < 0) {
-    this.message = 'You died.';
-  }
-  return true;
-};
-
 BuildTowers.getWeaponFromStatus = function (status) {
   var weapon = {};
   weapon.symbol      = status.symbol;
@@ -344,52 +333,6 @@ BuildTowers.setWeaponToStatus = function (status, weapon) {
   return status;
 };
 
-BuildTowers.prototype.reload = function () {
-  if (this.time <= this.status.reloadCD) {
-    return false;
-  } else if (this.status.ammo === 0) {
-    return false;
-  } else if (this.status.magazine === this.status.capacity) {
-    this.message = "You don't need to reload.";
-    return false;
-  }
-  this.status.magazine += this.status.ammo;
-  this.status.ammo = Math.max(this.status.magazine - this.status.capacity, 0);
-  this.status.magazine -= this.status.ammo;
-  this.status.reloadCD = this.time + this.status.reloadSpeed;
-  this.message = "You are reloading.";
-  return true;
-};
-
-BuildTowers.prototype.equip = function () {
-  if (this.time <= this.status.fireCD) {
-    return false;
-  } else if (this.time <= this.status.reloadCD) {
-    return false;
-  } else if (this.time <= this.status.moveCD) {
-    return false;
-  } else if (!this.items[this.y][this.x]) {
-    this.message = 'There is nothing here to pick up.';
-    return false;
-  }
-
-  var old_weapon = BuildTowers.getWeaponFromStatus(this.status);
-  BuildTowers.setWeaponToStatus(this.status, this.items[this.y][this.x]);
-  this.items[this.y][this.x] = old_weapon;
-
-  var message = 'E - equip --> ';
-  var status = old_weapon;
-  var weapon_str = 'POW:' + status.power + ' CAP:' + status.magazine + '/' + status.capacity + '/**' ;
-  weapon_str += ' SPD:' + status.fireSpeed + ' RLD:' + status.reloadSpeed;
-  weapon_str += ' RNG:' + status.rangeType + '/' + status.rangeSpeed + '/' + status.rangeMin + '+' + status.rangeMax;
-  message += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(message.length - 96);
-  this.message = message;
-
-  this.status.moveCD = this.time + this.status.moveSpeed; // equip CD = move CD
-
-  return true;
-};
-
 BuildTowers.prototype.turn = function () {
   if (this.status.health < 0) {
     return true;
@@ -406,7 +349,7 @@ BuildTowers.prototype.turn = function () {
   }
   this.enemies = this.enemies.filter(function (enemy) {
     if (!enemy.dead) {
-      this.enemyFire(enemy) || this.enemyMove(enemy);
+      this.enemyMove(enemy);
       return true;
     }
   }, this);
@@ -454,102 +397,9 @@ BuildTowers.prototype.createEnemy = function (rand_num) {
     enemy.status.moveSpeed = 12;
   }
 
-  enemy.status.symbol = '|';
-  enemy.status.power = Math.ceil(10 * (BuildTowers_WAVE_SCALE + this.wave) / BuildTowers_WAVE_SCALE);
-  enemy.status.magazine = 12;
-  enemy.status.capacity = 12;
-  enemy.status.ammo = 100;
-  enemy.status.fireSpeed = 4;
-  enemy.status.fireCD = 0;
-  enemy.status.reloadSpeed = 16;
-  enemy.status.reloadCD = 0;
-  enemy.status.rangeSpeed = 12;
-  enemy.status.rangeMin = 3;
-  enemy.status.rangeMax = 3;
-  enemy.status.rangeType = 'A';
-
-  if (rand_num * 100 % 10 < 1) {
-    enemy.status.symbol = '-';
-    enemy.status.magazine = 6;
-    enemy.status.capacity = 6;
-    enemy.status.power = Math.ceil(enemy.status.power * 2);
-    enemy.status.rangeType = 'A';
-  } else if (rand_num * 100 % 10 < 2) {
-    enemy.status.symbol = '/';
-    enemy.status.power = Math.ceil(enemy.status.power / 2);
-    enemy.status.magazine = 40;
-    enemy.status.capacity = 40;
-    enemy.status.fireSpeed = 2;
-    enemy.status.reloadSpeed = 30;
-    enemy.status.rangeMax = 1;
-    enemy.status.rangeMin = 4;
-    enemy.status.rangeType = 'B';
-  } else if (rand_num * 100 % 10 < 3) {
-    enemy.status.symbol = '|';
-    enemy.status.magazine = 5;
-    enemy.status.capacity = 5;
-    enemy.status.fireSpeed = 12;
-    enemy.status.rangeMax = 10;
-    enemy.status.rangeSpeed = 16;
-    enemy.status.rangeType = 'C';
-  } else if (rand_num * 100 % 10 < 4) {
-    enemy.status.symbol = '/';
-    enemy.status.magazine = 8;
-    enemy.status.capacity = 8;
-    enemy.status.power = Math.ceil(enemy.status.power / 2);
-    enemy.status.rangeMax = 1;
-    enemy.status.rangeMin = 4;
-    enemy.status.rangeType = 'B';
-  } else if (rand_num * 100 % 10 < 5) {
-    enemy.status.symbol = '-';
-    enemy.status.magazine = 4;
-    enemy.status.capacity = 4;
-    enemy.status.reloadSpeed = 1;
-    enemy.status.rangeType = 'A';
-  } else if (rand_num * 100 % 10 < 6) {
-    enemy.status.symbol = '-';
-    enemy.status.magazine = 4;
-    enemy.status.capacity = 4;
-    enemy.status.reloadSpeed = 1;
-    enemy.status.rangeType = 'A';
-  } else if (rand_num * 100 % 10 < 7) {
-    enemy.status.symbol = '|';
-    enemy.status.magazine = 5;
-    enemy.status.capacity = 5;
-    enemy.status.power = Math.ceil(enemy.status.power * 0.9);
-    enemy.status.rangeType = 'C';
-  } else if (rand_num * 100 % 10 < 8) {
-    enemy.status.symbol = '/';
-    enemy.status.magazine = 2;
-    enemy.status.capacity = 2;
-    enemy.status.rangeMin = 2;
-    enemy.status.rangeMax = 10;
-    enemy.status.rangeType = 'B';
-  } else if (rand_num * 100 % 10 < 9) {
-    enemy.status.symbol = '|';
-    enemy.status.magazine = 10;
-    enemy.status.capacity = 1000;
-    enemy.status.power = Math.ceil(enemy.status.power * 1.2);
-    enemy.status.rangeType = 'C';
-  }
-
-  // Bonus
-  if (rand_num * 1000 % 11 < 1) {
-    enemy.status.capacity += 2;
-  }
-  if (rand_num * 1000 % 13 < 1) {
-    enemy.status.rangeMax += 1;
-  }
-  if (rand_num * 1000 % 17 < 1) {
-    enemy.status.rangeMin += 1;
-  }
-  if (rand_num * 1000 % 19 < 1) {
-    enemy.status.power += this.wave;
-  }
-
   if (this.screen[enemy.y][enemy.x] === ' ') {
     this.enemies.push(enemy);
-    this.screen[enemy.y][enemy.x] = enemy.type;
+    //this.screen[enemy.y][enemy.x] = enemy.type;
   }
 };
 

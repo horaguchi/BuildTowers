@@ -180,35 +180,13 @@ BuildTowers.prototype.enemyMove = function (enemy) {
   if (this.time <= enemy.status.moveCD) {
     return false;
   }
-  var x_abs = Math.abs(this.x - enemy.x);
-  var y_abs = Math.abs(this.y - enemy.y);
-  if (x_abs === 0 && y_abs === 1) {
-    return false;
-  } else if (x_abs === 1 && y_abs === 0) {
+  enemy.pathIndex++;
+  if (enemy.pathIndex == this.path.length) {
+    enemy.dead = true;
+    this.status.health--;
     return false;
   }
-  var new_x = this.x < enemy.x ? enemy.x - 1 : enemy.x + 1;
-  var new_y = this.y < enemy.y ? enemy.y - 1 : enemy.y + 1;
-  if (this.screen[new_y][enemy.x] !== ' ' && this.screen[enemy.y][new_x] !== ' ') {
-    return false;
-  } else if (this.screen[new_y][enemy.x] === ' ' && this.screen[enemy.y][new_x] !== ' ') {
-    new_x = enemy.x;
-  } else if (this.screen[new_y][enemy.x] !== ' ' && this.screen[enemy.y][new_x] === ' ') {
-    new_y = enemy.y;
-  } else if (x_abs === y_abs) {
-    if (Math.random() < 0.5) {
-      new_x = enemy.x;
-    } else {
-      new_y = enemy.y;
-    }
-  } else if (x_abs < y_abs) {
-    new_x = enemy.x;
-  } else {
-    new_y = enemy.y;
-  }
-  //this.screen[enemy.y][enemy.x] = ' ';
-  //this.screen[new_y][new_x] = enemy.type;
-  enemy.x = new_x; enemy.y = new_y;
+  enemy.x = this.path[enemy.pathIndex][0]; enemy.y = this.path[enemy.pathIndex][1];
   enemy.status.moveCD = this.time + enemy.status.moveSpeed;
   return true;
 };
@@ -329,15 +307,9 @@ BuildTowers.prototype.turn = function () {
 var BuildTowers_WAVE_SCALE = 4;
 BuildTowers.prototype.createEnemy = function (rand_num) {
   var enemy = {};
-  if (rand_num * 100 % 4 < 1) {
-    enemy.x = 0; enemy.y = 0;
-  } else if (rand_num * 100 % 4 < 2) {
-    enemy.x = 95; enemy.y = 0;
-  } else if (rand_num * 100 % 4 < 3) {
-    enemy.x = 0; enemy.y = 24;
-  } else if (rand_num * 100 % 4 < 4) {
-    enemy.x = 95; enemy.y = 24;
-  }
+  enemy.x = this.path[0][0]; enemy.y = this.path[0][1];
+  enemy.pathIndex = 0;
+
   enemy.type = 'Z';
   enemy.status = {};
   enemy.status.health = 10 * (BuildTowers_WAVE_SCALE + this.wave) / BuildTowers_WAVE_SCALE;
@@ -366,10 +338,7 @@ BuildTowers.prototype.createEnemy = function (rand_num) {
     enemy.status.moveSpeed = 12;
   }
 
-  if (this.screen[enemy.y][enemy.x] === '.') {
-    this.enemies.push(enemy);
-    //this.screen[enemy.y][enemy.x] = enemy.type;
-  }
+  this.enemies.push(enemy);
 };
 
 BuildTowers.prototype.point = function (x, y) {

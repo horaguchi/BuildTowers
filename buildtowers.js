@@ -3,17 +3,9 @@ var BuildTowers = function () {
   for (var y = 0; y < 25; ++y) { // status line is 2
     var row = [];
     for (var x = 0; x < 96; ++x) {
-      row.push(' ');
+      row.push('.');
     }
     screen.push(row);
-  }
-  var items = this.items = [];
-  for (var y = 0; y < 25; ++y) { // status line is 2
-    var item_row = [];
-    for (var x = 0; x < 96; ++x) {
-      item_row.push(false);
-    }
-    items.push(item_row);
   }
   this.message = BuildTowers_MANUAL_LINE_STR;
 
@@ -50,7 +42,7 @@ var BuildTowers = function () {
 module.exports = BuildTowers;
 
 var BuildTowers_EMPTY_LINE_STR = '                                                                                                ';
-var BuildTowers_MANUAL_LINE_STR = 'WASD - move, A - build tower, X - remove tower, SPACE - next turn';
+var BuildTowers_MANUAL_LINE_STR = 'WASD or HJKL - move, I - build tower, X - remove tower, SPACE - next turn';
 var PF = require('pathfinding');
 
 BuildTowers.prototype.getScreen = function () {
@@ -62,7 +54,6 @@ BuildTowers.prototype.getScreen = function () {
   weapon_str += ' SPD:' + status.fireSpeed + ' RLD:' + (time <= status.reloadCD ? status.reloadCD - time : status.reloadSpeed);
   weapon_str += ' RNG:' + status.rangeType + '/' + status.rangeSpeed + '/' + status.rangeMin + '+' + status.rangeMax;
   status_str += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(status_str.length - 96);
-  var items = this.items;
   var range_num = status.rangeMin + Math.min(status.rangeMax, Math.floor(Math.max(0, (time - status.moveCD)) / status.rangeSpeed));
   var enemiesMap = {};
   this.enemies.forEach(function (enemy) {
@@ -70,11 +61,12 @@ BuildTowers.prototype.getScreen = function () {
   });
   return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
     return row.map(function (tile, x) {
-      if (tile !== ' ') {
-        return tile;
+      if (px == x && py == y) {
+        return '@';
       } else if (enemiesMap[x + '-' + y]) {
         return enemiesMap[x + '-' + y];
-      }
+      } 
+      return tile;
     });
   }));
 };
@@ -85,14 +77,16 @@ BuildTowers.prototype.key = function (key_str) {
   }
 
   if (key_str === 'w' || key_str === 'k' || key_str === '&') {
-    return this.move(0, -1);
+    return this.moveCursor(0, -1);
   } else if (key_str === 'a' || key_str === 'h' || key_str === '%') {
-    return this.move(-1, 0);
+    return this.moveCursor(-1, 0);
   } else if (key_str === 's' || key_str === 'j' || key_str === '(') {
-    return this.move(0, 1);
+    return this.moveCursor(0, 1);
   } else if (key_str === 'd' || key_str === 'l' || key_str === "'") {
-    return this.move(1, 0);
-  } else if (key_str === 'f') {
+    return this.moveCursor(1, 0);
+  } else if (key_str === 'i') {
+    return this.fire();
+  } else if (key_str === 'x') {
     return this.fire();
   }
 
@@ -137,73 +131,13 @@ BuildTowers.prototype.calculatePath = function () {
 };
 
 
-BuildTowers.prototype.move = function (move_x, move_y) {
+BuildTowers.prototype.moveCursor = function (move_x, move_y) {
   var new_x = this.x + move_x, new_y = this.y + move_y;
-  if (this.time <= this.status.moveCD) {
-    return false;
-  } else if (new_x < 0 || 96 <= new_x || new_y < 0 || 25 <= new_y) {
-    this.message = 'Blocked';
-    return false;
-  } else if (this.screen[new_y][new_x] !== ' ') {
+  if (new_x < 0 || 96 <= new_x || new_y < 0 || 25 <= new_y) {
     this.message = 'Blocked';
     return false;
   }
-  this.screen[this.y][this.x] = ' ';
-  this.screen[new_y][new_x] = '@';
   this.x = new_x; this.y = new_y;
-  this.status.moveCD = this.time + this.status.moveSpeed;
-  if (this.items[new_y][new_x]) {
-    var status = this.items[new_y][new_x];
-    if (status.symbol === '%') {
-      var rand = Math.random();
-      if (rand < 0.9) {
-        this.message = "My, that's a yummy corpse. ";
-        if (rand * 100 % 10 < 3) {
-          this.message += "You feel better.";
-          this.status.health = this.status.healthMax;
-        } else if (rand * 100 % 10 < 6) {
-          this.message += "You feel bigger.";
-          this.status.healthMax = this.status.healthMax += 40;
-        } else if (rand * 100 % 10 < 9) {
-          this.message += "You seem faster.";
-          this.status.moveSpeed = Math.max(0, this.status.moveSpeed - 1);
-        } else if (rand * 100 % 10 < 10) {
-          this.message += "A tail has been growing in your gun.";
-          this.status.power += this.wave;
-        }
-      } else {
-        this.message = 'The corpse tastes terrible! ';
-        if (rand * 100 % 10 < 3) {
-          this.message += "You feel smaller.";
-          this.status.healthMax = Math.ceil(this.status.healthMax / 2);
-          this.status.health = Math.min(this.status.healthMax, this.status.health);
-        } else if (rand * 100 % 10 < 6) {
-          this.message += "You seem slower.";
-          this.status.moveSpeed += 2;
-        } else if (rand * 100 % 10 < 9) {
-          this.message += "You can not move for a while.";
-          this.status.moveCD += 1000;
-        } else if (rand * 100 % 10 < 10) {
-          this.message += "Your health point become 1.";
-          this.status.health = 1;
-        }
-      }
-      this.items[new_y][new_x] = null;
-    } else if (status.symbol === '!') {
-      this.message = 'You pick up ammo.';
-      this.status.ammo += Math.ceil( 1 + Math.random() * 10 );
-      this.items[new_y][new_x] = null;
-    } else {
-      var message = 'E - equip --> ';
-      var weapon_str = 'POW:' + status.power + ' CAP:' + status.magazine + '/' + status.capacity + '/**' ;
-      weapon_str += ' SPD:' + status.fireSpeed + ' RLD:' + status.reloadSpeed;
-      weapon_str += ' RNG:' + status.rangeType + '/' + status.rangeSpeed + '/' + status.rangeMin + '+' + status.rangeMax;
-      message += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(message.length - 96);
-      this.message = message;
-    }
-  } else {
-    //this.message = '';
-  }
   return true;
 };
 

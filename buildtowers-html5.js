@@ -115,6 +115,7 @@ BuildTowers.prototype.getPointFromHTML = function (x, y) {
 };
 
 BuildTowers.COLOR_REGEXP = /^\{([^-]+)-fg\}(.*)\{\/\1-fg\}$/;
+BuildTowers.UNDERLINE_REGEXP = /^\{underline\}(.*)\{\/underline\}$/;
 BuildTowers.prototype.draw = function (initial) {
   var screen = this.getScreen();
   var context = this.canvasContext;
@@ -136,7 +137,7 @@ BuildTowers.prototype.draw = function (initial) {
   var old_screen = initial ? null : this.oldScreen;
   var dw = this.fontX, dh = this.fontY;
 
-  var get_str_pos = function (str, color, full_width) {
+  var get_str_pos = function (str, color, full_width, underline) {
     if (font_map[str + ' ' + color]) {
       return font_map[str + ' ' + color];
     }
@@ -188,8 +189,14 @@ BuildTowers.prototype.draw = function (initial) {
           this.fillStyle = 'black';
         }
       }
+
+      var underlines = BuildTowers.UNDERLINE_REGEXP.exec(str);
+      if (underlines) {
+        str = underlines[1];
+      }
+
       var dx = dw * (full_width ? x - 1 : x), dy = dh * y;
-      var s = get_str_pos.call(this, str, this.fillStyle, full_width);
+      var s = get_str_pos.call(this, str, this.fillStyle, full_width, !!underlines);
       var sx = s[0], sy = s[1], sw = (full_width ? dw * 2 : dw ), sh = dh;
       context.drawImage((full_width ? fontfw_map_element : font_map_element), sx, sy, sw, sh, dx, dy, (full_width ? dw * 2 : dw), dh);
     }

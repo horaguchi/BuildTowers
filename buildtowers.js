@@ -11,7 +11,6 @@ var BuildTowers = function () {
 
   this.x = 48;
   this.y = 13;
-  screen[this.y][this.x] = '@';
 
   this.wave = 0;
   this.time = 0;
@@ -37,6 +36,14 @@ var BuildTowers = function () {
   this.status.rangeType = 'B';
 
   this.enemies = [];
+
+  this.finder = new PF.AStarFinder({
+    heuristic: PF.Heuristic.euclidean,
+    diagonalMovement: PF.DiagonalMovement.Never
+  });
+  this.createPoints();
+  this.path = [];
+  this.calculatePath();
 };
 // for node.js, not for CommonJS
 module.exports = BuildTowers;
@@ -62,7 +69,7 @@ BuildTowers.prototype.getScreen = function () {
   return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
     return row.map(function (tile, x) {
       if (px == x && py == y) {
-        return '@';
+        return '{underline}' + tile + '{/underline}';
       } else if (enemiesMap[x + '-' + y]) {
         return enemiesMap[x + '-' + y];
       } 
@@ -93,13 +100,41 @@ BuildTowers.prototype.key = function (key_str) {
   return true;
 };
 
+BuildTowers.prototype.createPoints = function () {
+  var points_num = Math.floor(Math.random() * 3) + 2; // 1 ~ 3
+  var points = [ ];
+  for (var i = 0; i < points_num; ++i) {
+    var point = [ ];
+    var point_ng = true;
+    while (point_ng) {
+      point = [ Math.floor(Math.random() * 96), Math.floor(Math.random() * 25) ];
+      if (point[0] === 48 && point[1] === 13) { // < position
+        continue;
+      } else if (this.screen[point[1]][point[0]] !== '.') {
+        continue;
+      }
+      point_ng = false;
+    }
+    points.push(point);
+    if (i === 0) {
+      this.screen[point[1]][point[0]] = '>';
+    } else {
+      this.screen[point[1]][point[0]] = String(i);
+    }
+  }
+  this.screen[13][48] = '<';
+  points.push([ 48, 13 ]);
+  this.points = points;
+};
+
 BuildTowers.prototype.calculatePath = function () {
-  var matrix = this.mapSymbol.map(function (row) {
+  var screen = this.screen;
+  var matrix = screen.map(function (row) {
     return row.map(function (value) {
-      return /^[^1-9.>]$/.test(value);
+      return /^[^1-9.,>]$/.test(value);
     });
   });
-  var grid = new PF.Grid(54, 27, matrix);
+  var grid = new PF.Grid(96, 25, matrix);
   var finder = this.finder;
   var points = this.points;
   var all_path = [];
@@ -114,17 +149,17 @@ BuildTowers.prototype.calculatePath = function () {
     path.pop();
     all_path = all_path.concat(path);
   }
-  var map_symbol = this.mapSymbol;
-  var map_color = this.mapColor;
   for (var i = 0; i < this.path.length; ++i) {
     var before_path = this.path[i];
-    if (map_symbol[before_path[1]][before_path[0]] === '.') {
-      map_color[before_path[1]][before_path[0]] = 'gray';
+    if (screen[before_path[1]][before_path[0]] === ',') {
+      screen[before_path[1]][before_path[0]] = '.';
     }
   }
   for (var i = 0; i < all_path.length; ++i) {
     var next_path = all_path[i];
-    map_color[next_path[1]][next_path[0]] = 'yellow';
+    if (screen[next_path[1]][next_path[0]] === '.') {
+      screen[next_path[1]][next_path[0]] = ',';
+    }
   }
   this.path = all_path;
   return true;
@@ -331,7 +366,7 @@ BuildTowers.prototype.createEnemy = function (rand_num) {
     enemy.status.moveSpeed = 12;
   }
 
-  if (this.screen[enemy.y][enemy.x] === ' ') {
+  if (this.screen[enemy.y][enemy.x] === '.') {
     this.enemies.push(enemy);
     //this.screen[enemy.y][enemy.x] = enemy.type;
   }

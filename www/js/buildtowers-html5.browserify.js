@@ -116,6 +116,7 @@ BuildTowers.prototype.getPointFromHTML = function (x, y) {
 };
 
 BuildTowers.COLOR_REGEXP = /^\{([^-]+)-fg\}(.*)\{\/\1-fg\}$/;
+BuildTowers.UNDERLINE_REGEXP = /^\{underline\}(.*)\{\/underline\}$/;
 BuildTowers.prototype.draw = function (initial) {
   var screen = this.getScreen();
   var context = this.canvasContext;
@@ -137,31 +138,38 @@ BuildTowers.prototype.draw = function (initial) {
   var old_screen = initial ? null : this.oldScreen;
   var dw = this.fontX, dh = this.fontY;
 
-  var get_str_pos = function (str, color, full_width) {
-    if (font_map[str + ' ' + color]) {
-      return font_map[str + ' ' + color];
+  var get_str_pos = function (str, color, full_width, underline) {
+    //underline = underline ? 'undeline' : 'false';
+    if (font_map[str + ' ' + color + ' ' + underline]) {
+      return font_map[str + ' ' + color + ' ' + underline];
+    } else if (fontfw_map[str + ' ' + color + ' ' + underline]) {
+      return fontfw_map[str + ' ' + color + ' ' + underline];
     }
-    var dx, dy, px, py;
+    var dx, dy;
     if (full_width) {
       ++this.fontFWLength;
       dx = (this.fontFWLength % BuildTowers.FONT_MAP_SIZE) * dw * 2; dy = Math.floor(this.fontFWLength / BuildTowers.FONT_MAP_SIZE) * dh;
-      px = dw; py = dh * 0.5;
       fontfw_context.clearRect(0, 0, dw * 2, dh);
       fontfw_context.fillStyle = color;
-      fontfw_context.fillText(str, px, py);
+      fontfw_context.fillText(str, dw, dh * 0.5);
+      if (underline) {
+        fontfw_context.fillRect(0, dh - 2, dw * 2, 2);
+      }
       fontfw_map_context.drawImage(fontfw_element, dx, dy);
-      fontfw_map[str + ' ' + color] = [ dx, dy ];
-      return fontfw_map[str + ' ' + color];
+      fontfw_map[str + ' ' + color + ' ' + underline] = [ dx, dy ];
+      return fontfw_map[str + ' ' + color + ' ' + underline];
     } else {
       ++this.fontLength;
       dx = (this.fontLength % BuildTowers.FONT_MAP_SIZE) * dw; dy = Math.floor(this.fontLength / BuildTowers.FONT_MAP_SIZE) * dh;
-      px = dw * 0.5; py = dh * 0.5;
       font_context.clearRect(0, 0, dw, dh);
       font_context.fillStyle = color;
-      font_context.fillText(str, px, py);
+      font_context.fillText(str, dw * 0.5, dh * 0.5);
+      if (underline) {
+        font_context.fillRect(0, dh - 2, dw, 2);
+      }
       font_map_context.drawImage(font_element, dx, dy);
-      font_map[str + ' ' + color] = [ dx, dy ];
-      return font_map[str + ' ' + color];
+      font_map[str + ' ' + color + ' ' + underline] = [ dx, dy ];
+      return font_map[str + ' ' + color + ' ' + underline];
     }
   };
   var before_full_width = false;
@@ -189,8 +197,14 @@ BuildTowers.prototype.draw = function (initial) {
           this.fillStyle = 'black';
         }
       }
+
+      var underlines = BuildTowers.UNDERLINE_REGEXP.exec(str);
+      if (underlines) {
+        str = underlines[1];
+      }
+
       var dx = dw * (full_width ? x - 1 : x), dy = dh * y;
-      var s = get_str_pos.call(this, str, this.fillStyle, full_width);
+      var s = get_str_pos.call(this, str, this.fillStyle, full_width, !!underlines);
       var sx = s[0], sy = s[1], sw = (full_width ? dw * 2 : dw ), sh = dh;
       context.drawImage((full_width ? fontfw_map_element : font_map_element), sx, sy, sw, sh, dx, dy, (full_width ? dw * 2 : dw), dh);
     }
@@ -204,23 +218,14 @@ var BuildTowers = function () {
   for (var y = 0; y < 25; ++y) { // status line is 2
     var row = [];
     for (var x = 0; x < 96; ++x) {
-      row.push(' ');
+      row.push('.');
     }
     screen.push(row);
-  }
-  var items = this.items = [];
-  for (var y = 0; y < 25; ++y) { // status line is 2
-    var item_row = [];
-    for (var x = 0; x < 96; ++x) {
-      item_row.push(false);
-    }
-    items.push(item_row);
   }
   this.message = BuildTowers_MANUAL_LINE_STR;
 
   this.x = 48;
   this.y = 13;
-  screen[this.y][this.x] = '@';
 
   this.wave = 0;
   this.time = 0;
@@ -246,6 +251,14 @@ var BuildTowers = function () {
   this.status.rangeType = 'B';
 
   this.enemies = [];
+
+  this.finder = new PF.AStarFinder({
+    heuristic: PF.Heuristic.euclidean,
+    diagonalMovement: PF.DiagonalMovement.Never
+  });
+  this.createPoints();
+  this.path = [];
+  this.calculatePath();
 };
 // for node.js, not for CommonJS
 module.exports = BuildTowers;
@@ -263,7 +276,6 @@ BuildTowers.prototype.getScreen = function () {
   weapon_str += ' SPD:' + status.fireSpeed + ' RLD:' + (time <= status.reloadCD ? status.reloadCD - time : status.reloadSpeed);
   weapon_str += ' RNG:' + status.rangeType + '/' + status.rangeSpeed + '/' + status.rangeMin + '+' + status.rangeMax;
   status_str += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(status_str.length - 96);
-  var items = this.items;
   var range_num = status.rangeMin + Math.min(status.rangeMax, Math.floor(Math.max(0, (time - status.moveCD)) / status.rangeSpeed));
   var enemiesMap = {};
   this.enemies.forEach(function (enemy) {
@@ -272,7 +284,7 @@ BuildTowers.prototype.getScreen = function () {
   return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
     return row.map(function (tile, x) {
       if (px == x && py == y) {
-        return '@';
+        return '{underline}' + tile + '{/underline}';
       } else if (enemiesMap[x + '-' + y]) {
         return enemiesMap[x + '-' + y];
       } 
@@ -303,13 +315,41 @@ BuildTowers.prototype.key = function (key_str) {
   return true;
 };
 
+BuildTowers.prototype.createPoints = function () {
+  var points_num = Math.floor(Math.random() * 3) + 2; // 1 ~ 3
+  var points = [ ];
+  for (var i = 0; i < points_num; ++i) {
+    var point = [ ];
+    var point_ng = true;
+    while (point_ng) {
+      point = [ Math.floor(Math.random() * 96), Math.floor(Math.random() * 25) ];
+      if (point[0] === 48 && point[1] === 13) { // < position
+        continue;
+      } else if (this.screen[point[1]][point[0]] !== '.') {
+        continue;
+      }
+      point_ng = false;
+    }
+    points.push(point);
+    if (i === 0) {
+      this.screen[point[1]][point[0]] = '>';
+    } else {
+      this.screen[point[1]][point[0]] = String(i);
+    }
+  }
+  this.screen[13][48] = '<';
+  points.push([ 48, 13 ]);
+  this.points = points;
+};
+
 BuildTowers.prototype.calculatePath = function () {
-  var matrix = this.mapSymbol.map(function (row) {
+  var screen = this.screen;
+  var matrix = screen.map(function (row) {
     return row.map(function (value) {
-      return /^[^1-9.>]$/.test(value);
+      return /^[^1-9.,>]$/.test(value);
     });
   });
-  var grid = new PF.Grid(54, 27, matrix);
+  var grid = new PF.Grid(96, 25, matrix);
   var finder = this.finder;
   var points = this.points;
   var all_path = [];
@@ -324,17 +364,17 @@ BuildTowers.prototype.calculatePath = function () {
     path.pop();
     all_path = all_path.concat(path);
   }
-  var map_symbol = this.mapSymbol;
-  var map_color = this.mapColor;
   for (var i = 0; i < this.path.length; ++i) {
     var before_path = this.path[i];
-    if (map_symbol[before_path[1]][before_path[0]] === '.') {
-      map_color[before_path[1]][before_path[0]] = 'gray';
+    if (screen[before_path[1]][before_path[0]] === ',') {
+      screen[before_path[1]][before_path[0]] = '.';
     }
   }
   for (var i = 0; i < all_path.length; ++i) {
     var next_path = all_path[i];
-    map_color[next_path[1]][next_path[0]] = 'yellow';
+    if (screen[next_path[1]][next_path[0]] === '.') {
+      screen[next_path[1]][next_path[0]] = ',';
+    }
   }
   this.path = all_path;
   return true;
@@ -541,7 +581,7 @@ BuildTowers.prototype.createEnemy = function (rand_num) {
     enemy.status.moveSpeed = 12;
   }
 
-  if (this.screen[enemy.y][enemy.x] === ' ') {
+  if (this.screen[enemy.y][enemy.x] === '.') {
     this.enemies.push(enemy);
     //this.screen[enemy.y][enemy.x] = enemy.type;
   }
@@ -552,10 +592,13 @@ BuildTowers.prototype.point = function (x, y) {
 };
 
 
-},{"pathfinding":5}],3:[function(require,module,exports){
+},{"pathfinding":3}],3:[function(require,module,exports){
+module.exports = require('./src/PathFinding');
+
+},{"./src/PathFinding":6}],4:[function(require,module,exports){
 module.exports = require('./lib/heap');
 
-},{"./lib/heap":4}],4:[function(require,module,exports){
+},{"./lib/heap":5}],5:[function(require,module,exports){
 // Generated by CoffeeScript 1.8.0
 (function() {
   var Heap, defaultCmp, floor, heapify, heappop, heappush, heappushpop, heapreplace, insort, min, nlargest, nsmallest, updateItem, _siftdown, _siftup;
@@ -926,10 +969,7 @@ module.exports = require('./lib/heap');
 
 }).call(this);
 
-},{}],5:[function(require,module,exports){
-module.exports = require('./src/PathFinding');
-
-},{"./src/PathFinding":6}],6:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 module.exports = {
     'Heap'                      : require('heap'),
     'Node'                      : require('./core/Node'),
@@ -949,7 +989,7 @@ module.exports = {
     'JumpPointFinder'           : require('./finders/JumpPointFinder'),
 };
 
-},{"./core/DiagonalMovement":7,"./core/Grid":8,"./core/Heuristic":9,"./core/Node":10,"./core/Util":11,"./finders/AStarFinder":12,"./finders/BestFirstFinder":13,"./finders/BiAStarFinder":14,"./finders/BiBestFirstFinder":15,"./finders/BiBreadthFirstFinder":16,"./finders/BiDijkstraFinder":17,"./finders/BreadthFirstFinder":18,"./finders/DijkstraFinder":19,"./finders/IDAStarFinder":20,"./finders/JumpPointFinder":25,"heap":3}],7:[function(require,module,exports){
+},{"./core/DiagonalMovement":7,"./core/Grid":8,"./core/Heuristic":9,"./core/Node":10,"./core/Util":11,"./finders/AStarFinder":12,"./finders/BestFirstFinder":13,"./finders/BiAStarFinder":14,"./finders/BiBestFirstFinder":15,"./finders/BiBreadthFirstFinder":16,"./finders/BiDijkstraFinder":17,"./finders/BreadthFirstFinder":18,"./finders/DijkstraFinder":19,"./finders/IDAStarFinder":20,"./finders/JumpPointFinder":25,"heap":4}],7:[function(require,module,exports){
 var DiagonalMovement = {
     Always: 1,
     Never: 2,
@@ -1661,7 +1701,7 @@ AStarFinder.prototype.findPath = function(startX, startY, endX, endY, grid) {
 
 module.exports = AStarFinder;
 
-},{"../core/DiagonalMovement":7,"../core/Heuristic":9,"../core/Util":11,"heap":3}],13:[function(require,module,exports){
+},{"../core/DiagonalMovement":7,"../core/Heuristic":9,"../core/Util":11,"heap":4}],13:[function(require,module,exports){
 var AStarFinder = require('./AStarFinder');
 
 /**
@@ -1874,7 +1914,7 @@ BiAStarFinder.prototype.findPath = function(startX, startY, endX, endY, grid) {
 
 module.exports = BiAStarFinder;
 
-},{"../core/DiagonalMovement":7,"../core/Heuristic":9,"../core/Util":11,"heap":3}],15:[function(require,module,exports){
+},{"../core/DiagonalMovement":7,"../core/Heuristic":9,"../core/Util":11,"heap":4}],15:[function(require,module,exports){
 var BiAStarFinder = require('./BiAStarFinder');
 
 /**
@@ -3120,5 +3160,5 @@ JumpPointFinderBase.prototype._identifySuccessors = function(node) {
 
 module.exports = JumpPointFinderBase;
 
-},{"../core/DiagonalMovement":7,"../core/Heuristic":9,"../core/Util":11,"heap":3}]},{},[1])(1)
+},{"../core/DiagonalMovement":7,"../core/Heuristic":9,"../core/Util":11,"heap":4}]},{},[1])(1)
 });

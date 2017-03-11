@@ -138,30 +138,37 @@ BuildTowers.prototype.draw = function (initial) {
   var dw = this.fontX, dh = this.fontY;
 
   var get_str_pos = function (str, color, full_width, underline) {
-    if (font_map[str + ' ' + color]) {
-      return font_map[str + ' ' + color];
+    //underline = underline ? 'undeline' : 'false';
+    if (font_map[str + ' ' + color + ' ' + underline]) {
+      return font_map[str + ' ' + color + ' ' + underline];
+    } else if (fontfw_map[str + ' ' + color + ' ' + underline]) {
+      return fontfw_map[str + ' ' + color + ' ' + underline];
     }
-    var dx, dy, px, py;
+    var dx, dy;
     if (full_width) {
       ++this.fontFWLength;
       dx = (this.fontFWLength % BuildTowers.FONT_MAP_SIZE) * dw * 2; dy = Math.floor(this.fontFWLength / BuildTowers.FONT_MAP_SIZE) * dh;
-      px = dw; py = dh * 0.5;
       fontfw_context.clearRect(0, 0, dw * 2, dh);
       fontfw_context.fillStyle = color;
-      fontfw_context.fillText(str, px, py);
+      fontfw_context.fillText(str, dw, dh * 0.5);
+      if (underline) {
+        fontfw_context.fillRect(0, dh - 2, dw * 2, 2);
+      }
       fontfw_map_context.drawImage(fontfw_element, dx, dy);
-      fontfw_map[str + ' ' + color] = [ dx, dy ];
-      return fontfw_map[str + ' ' + color];
+      fontfw_map[str + ' ' + color + ' ' + underline] = [ dx, dy ];
+      return fontfw_map[str + ' ' + color + ' ' + underline];
     } else {
       ++this.fontLength;
       dx = (this.fontLength % BuildTowers.FONT_MAP_SIZE) * dw; dy = Math.floor(this.fontLength / BuildTowers.FONT_MAP_SIZE) * dh;
-      px = dw * 0.5; py = dh * 0.5;
       font_context.clearRect(0, 0, dw, dh);
       font_context.fillStyle = color;
-      font_context.fillText(str, px, py);
+      font_context.fillText(str, dw * 0.5, dh * 0.5);
+      if (underline) {
+        font_context.fillRect(0, dh - 2, dw, 2);
+      }
       font_map_context.drawImage(font_element, dx, dy);
-      font_map[str + ' ' + color] = [ dx, dy ];
-      return font_map[str + ' ' + color];
+      font_map[str + ' ' + color + ' ' + underline] = [ dx, dy ];
+      return font_map[str + ' ' + color + ' ' + underline];
     }
   };
   var before_full_width = false;

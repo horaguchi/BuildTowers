@@ -7,6 +7,12 @@ var BuildTowers = function () {
     }
     screen.push(row);
   }
+  this.rangeMatrix = screen.map(function (row) {
+    return row.map(function (value) {
+      return false; // no tower at start
+    });
+  });
+
   this.message = BuildTowers_MANUAL_LINE_STR;
 
   this.x = 48;
@@ -62,9 +68,10 @@ BuildTowers.prototype.getScreen = function () {
   this.enemies.forEach(function (enemy) {
     enemiesMap[enemy.x + '-' + enemy.y] = enemy.type;
   });
+  var rangeMatrix = this.rangeMatrix;
   return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
     return row.map(function (tile, x) {
-      var screen_str = enemiesMap[x + '-' + y] ? enemiesMap[x + '-' + y] : tile;
+      var screen_str = enemiesMap[x + '-' + y] || (rangeMatrix[y][x] && tile === ' ' ? '.' : tile);
       if (px == x && py == y) {
         return '{underline}' + screen_str + '{/underline}';
       }
@@ -228,7 +235,7 @@ BuildTowers.prototype.buildWall = function () {
 BuildTowers.prototype.buildTower = function () {
   var screen = this.screen;
   var cx = this.x, cy = this.y;
-  if (screen[cy][cx] !== ' ' && screen[cy][cx] !== ',') {
+  if (screen[cy][cx] !== ' ' && screen[cy][cx] !== ',' && screen[cy][cx] !== '#') {
     return false;
   } else if (this.status.gold < this.status.towerPrice) {
     this.message = BuildTowers_MONEY_SHORT_LINE_STR;
@@ -242,9 +249,22 @@ BuildTowers.prototype.buildTower = function () {
     return false;
   }
   this.towers.push({ x: cx, y: cy, status: { fireCD: 0 }});
+  this.updateRangeMatrix();
   this.status.gold -= this.status.towerPrice;
   this.status.towerPrice++;
   return true;
+};
+
+BuildTowers.prototype.updateRangeMatrix = function () {
+  var towers = this.towers;
+  var range = this.status.range;
+  this.rangeMatrix = this.screen.map(function (row, y) {
+    return row.map(function (value, x) {
+      return towers.some(function (tower) {
+        return Math.abs(x - tower.x) + Math.abs(y - tower.y) <= range;
+      });
+    });
+  });
 };
 
 BuildTowers.prototype.towerFire = function (tower) {
@@ -256,7 +276,7 @@ BuildTowers.prototype.towerFire = function (tower) {
   var range = this.status.range;
   this.enemies.some(function (test_enemy) {
     var x = test_enemy.x, y = test_enemy.y;
-    if (!test_enemy.dead && Math.abs(x - tx) + Math.abs(y - ty) < range) {
+    if (!test_enemy.dead && Math.abs(x - tx) + Math.abs(y - ty) <= range) {
       enemy = test_enemy;
       return true;
     }

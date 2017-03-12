@@ -138,7 +138,6 @@ BuildTowers.prototype.draw = function (initial) {
   var dw = this.fontX, dh = this.fontY;
 
   var get_str_pos = function (str, color, full_width, underline) {
-    //underline = underline ? 'undeline' : 'false';
     if (font_map[str + ' ' + color + ' ' + underline]) {
       return font_map[str + ' ' + color + ' ' + underline];
     } else if (fontfw_map[str + ' ' + color + ' ' + underline]) {

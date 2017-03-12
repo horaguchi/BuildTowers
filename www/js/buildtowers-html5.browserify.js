@@ -38,7 +38,7 @@ BuildTowers.prototype.initialCanvas = function (element) {
     game.key((game.keyNow || '').toLowerCase());
     game.turn();
     game.draw();
-  }, 50);
+  }, 30);
 };
 
 BuildTowers.FONT_MAP_SIZE = 50; // font map is for pre-rendering area, 50 x 50 is reserved in the default
@@ -139,7 +139,6 @@ BuildTowers.prototype.draw = function (initial) {
   var dw = this.fontX, dh = this.fontY;
 
   var get_str_pos = function (str, color, full_width, underline) {
-    //underline = underline ? 'undeline' : 'false';
     if (font_map[str + ' ' + color + ' ' + underline]) {
       return font_map[str + ' ' + color + ' ' + underline];
     } else if (fontfw_map[str + ' ' + color + ' ' + underline]) {
@@ -248,7 +247,7 @@ var BuildTowers = function () {
   this.status.power = 10;
   this.status.fireSpeed = 4;
   this.status.fireCD = 0;
-  this.status.range = 3;
+  this.status.range = 2;
 
   this.enemies = [];
   this.towers = [];
@@ -264,90 +263,7 @@ var BuildTowers = function () {
 // for node.js, not for CommonJS
 module.exports = BuildTowers;
 
-var BuildTowers_EMPTY_LINE_STR = '                                                                                                ';
-var BuildTowers_MANUAL_LINE_STR = 'WASD or HJKL - move, Q - build wall(1G), E - build tower(5G)';
-var BuildTowers_MONEY_SHORT_LINE_STR = 'You do not have enough money.'
-var BuildTowers_CANNOT_BUILD_TOWER_LINE_STR = 'You can\'t build a tower here.';
-var BuildTowers_CANNOT_BUILD_WALL_LINE_STR = 'You can\'t build a wall here.';
-var PF = require('pathfinding');
-
-BuildTowers.prototype.getScreen = function () {
-  var status = this.status;
-  var px = this.x, py = this.y;
-  var time = this.time;
-  var status_str = 'WAVE:' + this.wave + ' TIME:' + Math.floor(time / 10) + ' HP:' + status.health + '/' + status.healthMax;
-  status_str += ' GLD:' + status.gold + '(#:' + status.wallPrice + ',@:' + status.towerPrice + ')';
-  var weapon_str = 'POW:' + status.power + ' SPD:' + status.fireSpeed + ' RNG:' + status.range;
-  status_str += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(status_str.length - 96);
-  var enemiesMap = {};
-  this.enemies.forEach(function (enemy) {
-    enemiesMap[enemy.x + '-' + enemy.y] = enemy.type;
-  });
-  var rangeMatrix = this.rangeMatrix;
-  return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
-    return row.map(function (tile, x) {
-      var screen_str = enemiesMap[x + '-' + y] || (rangeMatrix[y][x] && tile === ' ' ? '.' : tile);
-      if (px == x && py == y) {
-        return '{underline}' + screen_str + '{/underline}';
-      }
-      return screen_str;
-    });
-  }));
-};
-
-BuildTowers.prototype.key = function (key_str) {
-  if (this.status.health < 0) {
-    this.message = '*GAME OVER*';
-    return true;
-  }
-
-  if (key_str === 'w' || key_str === 'k' || key_str === '&') {
-    return this.moveCursor(0, -1);
-  } else if (key_str === 'a' || key_str === 'h' || key_str === '%') {
-    return this.moveCursor(-1, 0);
-  } else if (key_str === 's' || key_str === 'j' || key_str === '(') {
-    return this.moveCursor(0, 1);
-  } else if (key_str === 'd' || key_str === 'l' || key_str === "'") {
-    return this.moveCursor(1, 0);
-  } else if (key_str === 'q') {
-    return this.buildWall();
-  } else if (key_str === 'e') {
-    return this.buildTower();
-  }
-
-  return true;
-};
-
-BuildTowers.prototype.turn = function () {
-  if (this.status.health < 0) {
-    return true;
-  }
-
-  if (this.time % 1000 === 0) {
-    this.wave++;
-    this.spawnRate = Math.max(30 - this.wave, 0) + 4 + Math.ceil(Math.random() * 20);
-    this.spawnSeed = Math.random();
-  } else if (this.time % 1000 < 800) {
-    if (this.time % this.spawnRate === 0) {
-      this.createEnemy(this.spawnSeed);
-    }
-  }
-
-  this.enemies = this.enemies.filter(function (enemy) {
-    if (!enemy.dead) {
-      this.enemyMove(enemy);
-      return true;
-    }
-  }, this);
-
-  this.towers.forEach(function (tower) {
-    this.towerFire(tower);
-  }, this);
-
-  this.time++;
-  return true;
-};
-
+// initial map
 BuildTowers.prototype.createPoints = function () {
   var points_num = Math.floor(Math.random() * 3) + 2; // 1 ~ 3
   var points = [ ];
@@ -373,6 +289,119 @@ BuildTowers.prototype.createPoints = function () {
   this.screen[13][48] = '<';
   points.push([ 48, 13 ]);
   this.points = points;
+};
+
+var BuildTowers_EMPTY_LINE_STR = '                                                                                                ';
+var BuildTowers_MANUAL_LINE_STR = 'WASD or HJKL - move, Q or Z - build wall(1G), E or X - build tower(5G)';
+var BuildTowers_MONEY_SHORT_LINE_STR = 'You do not have enough money.'
+var BuildTowers_CANNOT_BUILD_TOWER_LINE_STR = 'You can\'t build a tower here.';
+var BuildTowers_CANNOT_BUILD_WALL_LINE_STR = 'You can\'t build a wall here.';
+var PF = require('pathfinding');
+
+BuildTowers.prototype.getScreen = function () {
+  var status = this.status;
+  var cx = this.x, cy = this.y;
+  var time = this.time;
+  var status_str = 'WAVE:' + this.wave + ' TIME:' + Math.floor(time / 10) + ' HP:' + status.health + '/' + status.healthMax;
+  status_str += ' GLD:' + status.gold + '(#:' + status.wallPrice + ',@:' + status.towerPrice + ')';
+  var weapon_str = 'POW:' + status.power + ' SPD:' + status.fireSpeed + ' RNG:' + status.range;
+  status_str += (BuildTowers_EMPTY_LINE_STR + weapon_str).slice(status_str.length - 96);
+  var enemiesMap = {};
+  this.enemies.forEach(function (enemy) {
+    enemiesMap[enemy.x + '-' + enemy.y] = enemy.type;
+  });
+  var rangeMatrix = this.rangeMatrix;
+  return [ status_str.split(''), (this.message + BuildTowers_EMPTY_LINE_STR).split('') ].concat(this.screen.map(function (row, y) {
+    return row.map(function (tile, x) {
+      var screen_str = enemiesMap[x + '-' + y] || tile;
+      if (rangeMatrix[y][x]) {
+        screen_str = (screen_str === ' ' ? '.' : (screen_str === ',' ? ';' : screen_str));
+      }
+      if (cx == x && cy == y) {
+        return '{underline}' + screen_str + '{/underline}';
+      }
+      return screen_str;
+    });
+  }));
+};
+
+BuildTowers.prototype.key = function (key_str) {
+  if (this.status.health < 0) {
+    this.message = '*GAME OVER*';
+    return true;
+  } else if (this.wave === 101) {
+    this.message = '*GAME CLEAR*';
+    return true;
+  }
+  if (key_str === 'w' || key_str === 'k' || key_str === '&') {
+    return this.moveCursor(0, -1);
+  } else if (key_str === 'a' || key_str === 'h' || key_str === '%') {
+    return this.moveCursor(-1, 0);
+  } else if (key_str === 's' || key_str === 'j' || key_str === '(') {
+    return this.moveCursor(0, 1);
+  } else if (key_str === 'd' || key_str === 'l' || key_str === "'") {
+    return this.moveCursor(1, 0);
+  } else if (key_str === 'q' || key_str === 'z') {
+    return this.buildWall();
+  } else if (key_str === 'e' || key_str === 'x') {
+    return this.buildTower();
+  }
+
+  return true;
+};
+
+BuildTowers.prototype.turn = function () {
+  if (this.status.health < 0) {
+    return true;
+  }
+
+  if (this.time % 1000 === 0) {
+    this.wave++;
+    this.spawnRate = Math.max(10 - this.wave, 0) + 4 + Math.ceil(Math.random() * 20);
+    this.spawnSeed = Math.random();
+    if (this.wave > 1) {
+      this.powerUp(this.spawnSeed);
+    }
+  } else if (this.time % 1000 < 800) {
+    if (this.time % this.spawnRate === 0) {
+      this.createEnemy(this.spawnSeed);
+    }
+  }
+
+  this.enemies = this.enemies.filter(function (enemy) {
+    if (!enemy.dead) {
+      this.enemyMove(enemy);
+      return true;
+    }
+  }, this);
+
+  this.towers.forEach(function (tower) {
+    this.towerFire(tower);
+  }, this);
+
+  this.time++;
+  return true;
+};
+
+BuildTowers.prototype.powerUp = function (rand_num) {
+  var num = Math.ceil(rand_num * 100) % 10;
+  if (num === 0 && this.status.wallPrice !== 0) {
+    this.message = 'Walls are now free.';
+    this.status.wallPrice = 0;
+  } else if (num === 1 && this.status.fireSpeed > 1) {
+    this.message = 'The tower\'s speed ++';
+    this.status.fireSpeed--;
+  } else if (num === 2 && this.status.range < 9) {
+    this.message = 'The tower\'s range ++';
+    this.status.range++;
+    this.updateRangeMatrix();
+  } else if (num === 3) {
+    this.message = 'The tower\'s cost --';
+    this.status.towerPrice = Math.max(this.status.towerPrice - 5, 0);
+  } else {
+    this.message = 'The tower\'s power ++';
+    this.status.power++;
+  }
 };
 
 BuildTowers.prototype.calculatePath = function () {
@@ -419,7 +448,6 @@ BuildTowers.prototype.moveCursor = function (move_x, move_y) {
   }
   var new_x = this.x + move_x, new_y = this.y + move_y;
   if (new_x < 0 || 96 <= new_x || new_y < 0 || 25 <= new_y) {
-    this.message = 'Blocked';
     return false;
   }
   this.x = new_x; this.y = new_y;
@@ -503,7 +531,6 @@ BuildTowers.prototype.towerFire = function (tower) {
   enemy.status.health -= this.status.power;
   if (enemy.status.health < 0) {
     enemy.dead = true;
-    this.message = enemy.type + ' is killed.';
     this.status.gold++;
   }
 };
@@ -523,7 +550,6 @@ BuildTowers.prototype.enemyMove = function (enemy) {
   return true;
 };
 
-var BuildTowers_WAVE_SCALE = 1;
 BuildTowers.prototype.createEnemy = function (rand_num) {
   var enemy = {};
   enemy.x = this.path[0][0]; enemy.y = this.path[0][1];
@@ -531,8 +557,8 @@ BuildTowers.prototype.createEnemy = function (rand_num) {
 
   enemy.type = 'Z';
   enemy.status = {};
-  enemy.status.health = 10 * (BuildTowers_WAVE_SCALE + this.wave) / BuildTowers_WAVE_SCALE;
-  enemy.status.healthMax = 10 * (BuildTowers_WAVE_SCALE + this.wave) / BuildTowers_WAVE_SCALE;
+  enemy.status.health = (20 + this.wave / 3) * this.wave;
+  enemy.status.healthMax = (20 + this.wave / 3) * this.wave;
   enemy.status.moveSpeed = 2;
   enemy.status.moveCD = 0;
   if (rand_num < 0.01) {

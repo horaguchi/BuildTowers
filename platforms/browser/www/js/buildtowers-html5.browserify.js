@@ -38,7 +38,7 @@ BuildTowers.prototype.initialCanvas = function (element) {
     game.key((game.keyNow || '').toLowerCase());
     game.turn();
     game.draw();
-  }, 30);
+  }, 50);
 };
 
 BuildTowers.FONT_MAP_SIZE = 50; // font map is for pre-rendering area, 50 x 50 is reserved in the default
